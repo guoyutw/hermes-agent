@@ -82,6 +82,7 @@ from hermes_state_common import (  # noqa: F401  (re-exported for back-compat)
 from hermes_state_portability import SessionPortabilityMixin
 from hermes_state_schema import SessionSchemaMixin
 from hermes_state_search import SessionSearchMixin
+from hermes_state_boundary import CompressionBoundaryPersistenceMixin
 
 try:  # Hard dependency, but tolerate scaffold-phase imports before pip install.
     import psutil
@@ -2679,7 +2680,12 @@ def count_db_holders(db_path: Path) -> Optional[int]:
         return None
 
 
-class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin):
+class SessionDB(
+    SessionSearchMixin,
+    SessionSchemaMixin,
+    SessionPortabilityMixin,
+    CompressionBoundaryPersistenceMixin,
+):
     """
     SQLite-backed session storage with FTS5 search.
 

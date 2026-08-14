@@ -216,7 +216,7 @@ def _sql_session_last_active_by_id(session_id_expr: str) -> str:
     )
 
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 
 # FTS storage-layout version, tracked INDEPENDENTLY of SCHEMA_VERSION in the
@@ -382,6 +382,30 @@ CREATE TABLE IF NOT EXISTS compression_locks (
     acquired_at REAL NOT NULL,
     expires_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS compression_boundaries (
+    compression_boundary_id TEXT PRIMARY KEY,
+    source_session_id TEXT NOT NULL
+        REFERENCES sessions(id) ON DELETE CASCADE,
+    target_session_id TEXT NOT NULL
+        REFERENCES sessions(id) ON DELETE CASCADE,
+    mode TEXT NOT NULL CHECK (mode IN ('IN_PLACE', 'ROTATION')),
+    boundary_seq INTEGER NOT NULL CHECK (boundary_seq >= 1),
+    contract_version TEXT NOT NULL,
+    protected_block_json TEXT NOT NULL,
+    protected_block_sha256 TEXT NOT NULL
+        CHECK (length(protected_block_sha256) = 64),
+    created_at TEXT NOT NULL,
+    committed_at TEXT NOT NULL,
+    UNIQUE (source_session_id, boundary_seq),
+    CHECK (
+        (mode = 'IN_PLACE' AND source_session_id = target_session_id)
+        OR (mode = 'ROTATION' AND source_session_id != target_session_id)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_compression_boundaries_source_seq
+    ON compression_boundaries(source_session_id, boundary_seq);
 
 CREATE TABLE IF NOT EXISTS async_delegations (
     delegation_id TEXT PRIMARY KEY,
