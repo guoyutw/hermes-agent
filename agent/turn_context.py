@@ -1022,7 +1022,35 @@ def build_turn_context(
 
         _should_compress_now = False
         _compress_block_reason = None
-        if _preflight_deferred:
+        # Hard-limit precedence: msg_count >= hygiene_hard_message_limit must force
+        # _compress_context even if should_defer/cooldown would otherwise skip.
+        # This mirrors gateway hygiene's _HARD_MSG_LIMIT but for the tui/desktop
+        # Preflight path which otherwise has no hygiene evaluator.
+        _hyg_hard_limit = 5000
+        try:
+            from hermes_cli.config import load_config as _load_cfg_hard  # type: ignore
+            _cfg_hard = _load_cfg_hard() or {}
+            _raw_hard = (_cfg_hard.get("compression") or {}).get("hygiene_hard_message_limit")
+            if _raw_hard is not None:
+                _parsed_hard = int(_raw_hard)
+                if _parsed_hard > 0:
+                    _hyg_hard_limit = _parsed_hard
+        except Exception:
+            pass
+        _is_hyg_hard_limit_hit = False
+        try:
+            _is_hyg_hard_limit_hit = len(messages) >= _hyg_hard_limit
+        except Exception:
+            pass
+        if _is_hyg_hard_limit_hit:
+            logger.info(
+                "Preflight hard-limit hit: %s msgs >= %s hygiene_hard_message_limit — forcing compression (ignoring defer/cooldown)",
+                len(messages),
+                _hyg_hard_limit,
+            )
+            _should_compress_now = True
+            _compress_block_reason = None
+        elif _preflight_deferred:
             logger.info(
                 "Skipping preflight compression: rough estimate ~%s >= %s, "
                 "but last real provider prompt was %s after compression",

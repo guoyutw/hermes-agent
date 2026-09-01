@@ -1023,7 +1023,14 @@ def resolve_compression_fallback_route() -> Optional[dict]:
             _get_auxiliary_task_config,
         )
 
-        chain = _get_auxiliary_task_config("compression").get("fallback_chain")
+        cfg = _get_auxiliary_task_config("compression")
+        chain = cfg.get("fallback_chain")
+        # Owner-approved config uses fallback_providers; the stall path
+        # historically only looked at fallback_chain (#78981) and would
+        # silently skip the approved fallback on host 600s no-progress.
+        # Support both keys so a single manual /compress can fallback in-place.
+        if not isinstance(chain, list):
+            chain = cfg.get("fallback_providers")
     except Exception:
         logger.debug("compression fallback_chain lookup failed", exc_info=True)
         return None
@@ -3560,6 +3567,30 @@ def compress_context(
         # atomic summary in half (#23975). Explicit stop surfaces set a separate
         # Event atomically; never infer cause from the racy message fields.
         _hard_cancel_event = getattr(agent, "_hard_interrupt_requested", None)
+        # Hygiene fence cancellation must also unwind the active summary call
+        # promptly. Upstream #97064 does this with one Event-shaped
+        # SummaryCancelSource (hard interrupt OR fence cancelled). Local
+        # _capture_aux_cancel_check shadows cancel_check when cancel_event is
+        # present, so we must NOT pass two competing inputs — build one
+        # combined Event-shaped source (or reuse hard event alone).
+        _summary_cancel_source = _hard_cancel_event
+        if commit_fence is not None:
+            _fence_for_cancel = commit_fence
+
+            class _SummaryCancelSource:  # Event-shaped for auxiliary_client
+                def is_set(self) -> bool:
+                    if _hard_cancel_event is not None:
+                        try:
+                            if bool(_hard_cancel_event.is_set()):
+                                return True
+                        except Exception:
+                            pass
+                    try:
+                        return bool(_fence_for_cancel.is_cancelled)
+                    except Exception:
+                        return False
+
+            _summary_cancel_source = _SummaryCancelSource()
         try:
             # F6: never start expensive summary work for an already-cancelled
             # fence (a stale queued job admitted after host departure).
@@ -3572,13 +3603,21 @@ def compress_context(
                 compressed = messages
             else:
                 with aux_progress_hook(_progress_hook), aux_interrupt_protection(
-                    cancel_event=_hard_cancel_event
+                    cancel_event=_summary_cancel_source
                 ):
                     compressed = compress_fn(messages, **compress_kwargs)
-                    # Freeze a hard stop that arrived after the final provider
-                    # attempt unwound but before this transaction can rotate
-                    # session state.
-                    if (
+                    # Freeze a hard stop or a fence cancel that arrived after
+                    # the final provider attempt unwound but before this
+                    # transaction can rotate session state.
+                    if _summary_cancel_source is not None:
+                        try:
+                            if bool(_summary_cancel_source.is_set()):
+                                raise AuxiliaryExplicitCancellation()
+                        except AuxiliaryExplicitCancellation:
+                            raise
+                        except Exception:
+                            pass
+                    elif (
                         _hard_cancel_event is not None
                         and _hard_cancel_event.is_set()
                     ):
