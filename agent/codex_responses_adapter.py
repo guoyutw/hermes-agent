@@ -549,6 +549,42 @@ def _chat_messages_to_responses_input(
     local history is never truncated by native compaction, so the full
     conversation is still on the wire.
     """
+    # Pre-send orphan repair for Codex Responses (main + auxiliary share this
+    # converter): historical dangling assistant function_call / tool output
+    # pairs (e.g. fc_tmp_*) must not reach provider as 400.
+    try:
+        from agent.agent_runtime_helpers import _classify_tool_call_orphans
+
+        _, _, orphaned_results, missing_calls = _classify_tool_call_orphans(messages)
+        if orphaned_results:
+            orphan_ids = {id(m) for m in orphaned_results}
+            messages = [m for m in messages if id(m) not in orphan_ids]
+        if missing_calls:
+            missing_ids = set()
+            for c in missing_calls:
+                if isinstance(c, dict):
+                    missing_ids.add(c.get("id") or c.get("call_id"))
+                else:
+                    missing_ids.add(getattr(c, "id", None) or getattr(c, "call_id", None))
+            repaired: List[Dict[str, Any]] = []
+            for m in messages:
+                tcs = m.get("tool_calls")
+                if m.get("role") == "assistant" and isinstance(tcs, list) and tcs:
+                    kept = [tc for tc in tcs if (tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)) not in missing_ids]
+                    if len(kept) != len(tcs):
+                        if not kept:
+                            nm = dict(m)
+                            nm.pop("tool_calls", None)
+                            repaired.append(nm)
+                            continue
+                        nm = dict(m)
+                        nm["tool_calls"] = kept
+                        repaired.append(nm)
+                        continue
+                repaired.append(m)
+            messages = repaired
+    except Exception:
+        pass
     items: List[Dict[str, Any]] = []
     # Parallel to `items`: the raw chat message each converted item came
     # from. Pruning needs this to read a canonical summary carrier's
