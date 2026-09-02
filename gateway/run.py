@@ -20598,92 +20598,70 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                         # Turn-hold expiry is an availability boundary,
                                         # not a failure. The compressor is healthy and
                                         # still streaming; we simply cannot hold the
-                                        # current user turn any longer. Share the safe
-                                        # mechanics (fence, release, defer, proceed
-                                        # uncompressed) but with distinct provenance,
-                                        # user message, and NO failure-cooldown
-                                        # increment.
-                                        _cancelled = None
-                                        while _cancelled is None:
-                                            if _hyg_commit_fence.commit_in_flight:
-                                                _cancelled = False
-                                                break
-                                            _cancelled = (
-                                                _hyg_commit_fence.try_cancel_before_commit()
-                                            )
-                                            if _cancelled is None:
-                                                await asyncio.sleep(0.025)
-                                        if not _cancelled:
-                                            # NOTE: bounded overshoot by design.
-                                            # The turn can be held past
-                                            # _hyg_max_turn_hold_seconds by up to the
-                                            # commit duration (summary apply + storage
-                                            # write). Aborting mid-commit would corrupt
-                                            # the message-store transaction — the
-                                            # overshoot is the cheaper failure mode.
-                                            # Do NOT "fix" this into a mid-commit
-                                            # cancellation.
-                                            _compressed, _ = await _hyg_future
-                                        else:
-                                            _hyg_commit_fence.release_cancelled_compression_lock()
-                                            self._defer_agent_cleanup_until_future_done(
-                                                _hyg_future,
-                                                _hyg_agent,
-                                                context="session hygiene turn-hold",
-                                            )
-                                            _hyg_cleanup_deferred = True
-                                            # Short, NON-escalating retry-after. Without
-                                            # it, every subsequent turn re-spawns a fresh
-                                            # compressor, holds it for the turn-hold
-                                            # budget, and cancels it again — a per-turn
-                                            # summary-model token burn that never commits
-                                            # under sustained traffic. This is deliberately
-                                            # NOT _hygiene_cooldown_for_failure: the
-                                            # compressor is healthy, so the failure streak
-                                            # must not advance (behavior witness below);
-                                            # only the flat retry spacing is recorded.
-                                            _record_hygiene_cooldown(
-                                                self, session_entry.session_id,
-                                                _HYGIENE_TURNHOLD_RETRY_SECONDS,
-                                                "hygiene compression deferred: "
-                                                "turn-hold budget expired while the "
-                                                "summary was still streaming",
-                                            )
-                                            from agent.session_activity import (
-                                                ActivityProvenance,
-                                            )
-                                            _stamp_hygiene_compression_provenance(
-                                                _hyg_agent,
-                                                "session hygiene compression turn-hold",
-                                                ActivityProvenance.AGENT_COMPRESSION_TURNHOLD,
-                                                "hygiene compression turn-hold "
-                                                "activity stamp failed",
-                                            )
-                                            logger.info(
-                                                "Session hygiene compression for session %s "
-                                                "exceeded turn-hold budget (%.1fs); "
-                                                "proceeding without compression this turn",
-                                                session_entry.session_id,
-                                                time.monotonic() - _hyg_wait_started,
-                                            )
-                                            _turnhold_msg = t(
-                                                "gateway.compress.turnhold_deferred"
-                                            )
-                                            try:
-                                                _adapter = self._adapter_for_source(source)
-                                                if _adapter and source.chat_id:
-                                                    await _adapter.send(
-                                                        source.chat_id,
-                                                        _turnhold_msg,
-                                                        metadata=_hyg_meta,
-                                                    )
-                                            except Exception as _werr:
-                                                logger.warning(
-                                                    "Failed to deliver compression-turnhold "
-                                                    "notice to user: %s",
-                                                    _werr,
+                                        # current user turn any longer. FIX: detach
+                                        # healthy worker so fallback+commit can finish
+                                        # in background (previous code cancelled via
+                                        # try_cancel_before_commit -> 401 abort at
+                                        # 10.0s as explicit_interrupt, blocking hygiene
+                                        # commit; fixed 20260831_090733_f2edf34c).
+                                        _hyg_cleanup_deferred = True
+                                        self._defer_agent_cleanup_until_future_done(
+                                            _hyg_future,
+                                            _hyg_agent,
+                                            context="session hygiene turn-hold (detached)",
+                                        )
+                                        # Short, NON-escalating retry-after. Without
+                                        # it, every subsequent turn re-spawns a fresh
+                                        # compressor, holds it for the turn-hold
+                                        # budget, and cancels it again — a per-turn
+                                        # summary-model token burn that never commits
+                                        # under sustained traffic. This is deliberately
+                                        # NOT _hygiene_cooldown_for_failure: the
+                                        # compressor is healthy, so the failure streak
+                                        # must not advance (behavior witness below);
+                                        # only the flat retry spacing is recorded.
+                                        _record_hygiene_cooldown(
+                                            self, session_entry.session_id,
+                                            _HYGIENE_TURNHOLD_RETRY_SECONDS,
+                                            "hygiene compression deferred: "
+                                            "turn-hold budget expired while the "
+                                            "summary was still streaming",
+                                        )
+                                        from agent.session_activity import (
+                                            ActivityProvenance,
+                                        )
+                                        _stamp_hygiene_compression_provenance(
+                                            _hyg_agent,
+                                            "session hygiene compression turn-hold",
+                                            ActivityProvenance.AGENT_COMPRESSION_TURNHOLD,
+                                            "hygiene compression turn-hold "
+                                            "activity stamp failed",
+                                        )
+                                        logger.info(
+                                            "Session hygiene compression for session %s "
+                                            "exceeded turn-hold budget (%.1fs); "
+                                            "proceeding without compression this turn",
+                                            session_entry.session_id,
+                                            time.monotonic() - _hyg_wait_started,
+                                        )
+                                        _turnhold_msg = t(
+                                            "gateway.compress.turnhold_deferred"
+                                        )
+                                        try:
+                                            _adapter = self._adapter_for_source(source)
+                                            if _adapter and source.chat_id:
+                                                await _adapter.send(
+                                                    source.chat_id,
+                                                    _turnhold_msg,
+                                                    metadata=_hyg_meta,
                                                 )
-                                            raise
+                                        except Exception as _werr:
+                                            logger.warning(
+                                                "Failed to deliver compression-turnhold "
+                                                "notice to user: %s",
+                                                _werr,
+                                            )
+                                        raise
                                     except asyncio.TimeoutError:
                                         _cancelled = None
                                         while _cancelled is None:
