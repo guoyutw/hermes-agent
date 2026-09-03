@@ -1,0 +1,182 @@
+{
+  "issue": 17,
+  "kind": "manual_gateway_live",
+  "description": "Real Telegram /compress on session 20260902_222258_c8852b1a — durable CFG v0.2 evidence, not harness",
+  "session_id": "20260902_222258_c8852b1a",
+  "entrypoint": "gateway Telegram /compress -> run_agent preflight -> conversation_compression guard-before-fence -> atomic boundary",
+  "boundaries": [
+    {
+      "compression_boundary_id": "cb1_bfb0c5d02323a8ce06ad59cd170d011c3e89a7f639421b3e7f34ad18f5d0362c",
+      "session_id": "20260902_222258_c8852b1a",
+      "guard_version": "compression-fidelity-guard-v0.2",
+      "snapshot_sha256": "7728611aa21b675ce87b898883be63a2b08eaf1ab3113cbac90e42429478f34c",
+      "protected_block_sha256": "8bbe35ca6a564862da2068c9b94fe3c08a412304d7d6f409756c366dd29ee461",
+      "snapshot_json": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "400097",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "400097",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [],
+              "state": "CONVERSATION_ACTIVE"
+            }
+          }
+        ],
+        "schema_version": "ps-v1",
+        "supersessions": []
+      },
+      "protected_block_json": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "400097",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "400097",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [],
+              "state": "CONVERSATION_ACTIVE"
+            }
+          }
+        ],
+        "schema_version": "pb-v1"
+      },
+      "created_at": "2026-09-03T13:15:17.505540+08:00",
+      "committed_at": "1788412517.5065403",
+      "has_snapshot": true,
+      "has_protected_block": true,
+      "providers": []
+    },
+    {
+      "compression_boundary_id": "cb1_7608c3edc7e4d67937dc5928798ff4338d6075bd5b96bb362b6736cb07163eae",
+      "session_id": "20260902_222258_c8852b1a",
+      "guard_version": "compression-fidelity-guard-v0.2",
+      "snapshot_sha256": "565e24838db952d1bfb1e8959b3dd31c8f71f9b594a113cf401c91e935971b71",
+      "protected_block_sha256": "c8489ef4a18ac4424e632c9c8bbad3292fd48e523185537938b780547fd89247",
+      "snapshot_json": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "399896",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "399896",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [],
+              "state": "CONVERSATION_ACTIVE"
+            }
+          }
+        ],
+        "schema_version": "ps-v1",
+        "supersessions": []
+      },
+      "protected_block_json": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "399896",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "399896",
+              "session_id": "20260902_222258_c8852b1a"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [],
+              "state": "CONVERSATION_ACTIVE"
+            }
+          }
+        ],
+        "schema_version": "pb-v1"
+      },
+      "created_at": "2026-09-03T13:10:00.433767+08:00",
+      "committed_at": "1788412200.4358184",
+      "has_snapshot": true,
+      "has_protected_block": true,
+      "providers": []
+    }
+  ],
+  "log_excerpts": {
+    "cb1_bfb0c5d02323a8ce06ad59cd170d011c3e89a7f639421b3e7f34ad18f5d0362c": "2026-09-03 13:15:17,506 INFO agent.conversation_compression: FIDELITY_GUARD_PASS boundary=cb1_bfb0c5d02323a8ce06ad59cd170d011c3e89a7f639421b3e7f34ad18f5d0362c guard_version=compression-fidelity-guard-v0.2\n2026-09-03 13:15:17,530 INFO agent.conversation_compression: COMPACTION_BOUNDARY_COMMITTED boundary=cb1_bfb0c5d02323a8ce06ad59cd170d011c3e89a7f639421b3e7f34ad18f5d0362c",
+    "cb1_7608c3edc7e4d67937dc5928798ff4338d6075bd5b96bb362b6736cb07163eae": "2026-09-03 13:10:00,435 INFO agent.conversation_compression: FIDELITY_GUARD_PASS boundary=cb1_7608c3edc7e4d67937dc5928798ff4338d6075bd5b96bb362b6736cb07163eae guard_version=compression-fidelity-guard-v0.2\n2026-09-03 13:10:00,547 INFO agent.conversation_compression: COMPACTION_BOUNDARY_COMMITTED boundary=cb1_7608c3edc7e4d67937dc5928798ff4338d6075bd5b96bb362b6736cb07163eae"
+  },
+  "assertions": {
+    "fidelity_guard_pass": true,
+    "compaction_boundary_committed": true,
+    "snapshot_durable": true,
+    "protected_block_durable": true,
+    "distinct_hashes": true,
+    "trigger_source_manual": true,
+    "integrity_check": "ok"
+  },
+  "generated_at": "2026-09-03T14:20+08:00",
+  "candidate_commit": "65dfc88955638c955529ce3dfad0bf21c73a485e",
+  "refs": [
+    "agent.log",
+    "state.db compression_boundaries"
+  ]
+}
