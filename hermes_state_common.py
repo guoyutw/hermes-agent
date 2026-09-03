@@ -326,7 +326,7 @@ def _sql_session_last_active_by_id(session_id_expr: str) -> str:
     )
 
 
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 27
 
 
 # FTS storage-layout version, tracked INDEPENDENTLY of SCHEMA_VERSION in the
@@ -564,6 +564,47 @@ CREATE INDEX IF NOT EXISTS idx_compression_locks_expires ON compression_locks(ex
 CREATE INDEX IF NOT EXISTS idx_session_turn_leases_expires ON session_turn_leases(expires_at);
 CREATE INDEX IF NOT EXISTS idx_session_model_usage_session ON session_model_usage(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_model_usage_model ON session_model_usage(model);
+
+CREATE TABLE IF NOT EXISTS compression_boundaries (
+    compression_boundary_id TEXT PRIMARY KEY,
+    source_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    target_session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    mode TEXT NOT NULL CHECK (mode IN ('IN_PLACE', 'ROTATION')),
+    boundary_seq INTEGER NOT NULL CHECK (boundary_seq >= 1),
+    snapshot_id TEXT NOT NULL,
+    snapshot_sha256 TEXT NOT NULL,
+    protected_block_sha256 TEXT NOT NULL,
+    snapshot_json TEXT,
+    protected_block_json TEXT,
+    guard_version TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    committed_at TEXT NOT NULL,
+    record_integrity_sha256 TEXT,
+    UNIQUE (source_session_id, boundary_seq),
+    CHECK (
+        (mode = 'IN_PLACE' AND source_session_id = target_session_id)
+        OR (mode = 'ROTATION' AND source_session_id <> target_session_id)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS compression_boundary_provider_finalizations (
+    compression_boundary_id TEXT NOT NULL
+        REFERENCES compression_boundaries(compression_boundary_id) ON DELETE CASCADE,
+    provider_id TEXT NOT NULL CHECK (length(provider_id) > 0),
+    status TEXT NOT NULL CHECK (status IN ('NOT_STARTED', 'PENDING', 'COMPLETE', 'FAILED')),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    last_error_class TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (compression_boundary_id, provider_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_compression_boundaries_source
+    ON compression_boundaries(source_session_id, boundary_seq);
+CREATE INDEX IF NOT EXISTS idx_compression_boundaries_target
+    ON compression_boundaries(target_session_id, boundary_seq);
+CREATE INDEX IF NOT EXISTS idx_compression_boundary_provider_finalizations_status
+    ON compression_boundary_provider_finalizations(status, updated_at);
+
 CREATE INDEX IF NOT EXISTS idx_async_delegations_delivery
     ON async_delegations(delivery_state, completed_at);
 """

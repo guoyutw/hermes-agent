@@ -20565,12 +20565,34 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                                     _hyg_waited
                                                     >= _hyg_max_turn_hold_seconds
                                                 ):
+                                                    # Revoke commit admission before detaching.
+                                                    # A turn-hold worker is stale as soon as the
+                                                    # live turn proceeds; allowing it to publish
+                                                    # later races that turn and violates the
+                                                    # Issue #13 commit fence.
+                                                    _turnhold_cancelled = None
+                                                    while _turnhold_cancelled is None:
+                                                        if _hyg_commit_fence.commit_in_flight:
+                                                            _turnhold_cancelled = False
+                                                            break
+                                                        _turnhold_cancelled = (
+                                                            _hyg_commit_fence.try_cancel_before_commit()
+                                                        )
+                                                        if _turnhold_cancelled is None:
+                                                            await asyncio.sleep(0.025)
+                                                    if not _turnhold_cancelled:
+                                                        # Commit already owns admission. Wait for
+                                                        # that bounded transaction and consume its
+                                                        # result rather than misreporting a stale
+                                                        # worker while it mutates durable state.
+                                                        _compressed, _ = await _hyg_future
+                                                        break
+                                                    _hyg_commit_fence.release_cancelled_compression_lock()
                                                     logger.info(
                                                         "Session hygiene compression for "
                                                         "session %s exceeded the turn-hold "
                                                         "budget (%.1fs >= %.1fs) — "
-                                                        "abandoning inline wait, proceeding "
-                                                        "without compression this turn",
+                                                        "commit fenced; abandoning inline wait",
                                                         session_entry.session_id,
                                                         _hyg_waited,
                                                         _hyg_max_turn_hold_seconds,
@@ -20596,14 +20618,12 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                                                 raise
                                     except HygieneTurnHoldExceeded:
                                         # Turn-hold expiry is an availability boundary,
-                                        # not a failure. The compressor is healthy and
-                                        # still streaming; we simply cannot hold the
-                                        # current user turn any longer. FIX: detach
-                                        # healthy worker so fallback+commit can finish
-                                        # in background (previous code cancelled via
-                                        # try_cancel_before_commit -> 401 abort at
-                                        # 10.0s as explicit_interrupt, blocking hygiene
-                                        # commit; fixed 20260831_090733_f2edf34c).
+                                        # not a provider failure, but the worker becomes
+                                        # stale when the live turn proceeds. Commit
+                                        # admission was revoked above before this detach;
+                                        # conversation_compression propagates that fence
+                                        # cancellation into the protected provider call,
+                                        # and begin_commit remains the final write gate.
                                         _hyg_cleanup_deferred = True
                                         self._defer_agent_cleanup_until_future_done(
                                             _hyg_future,

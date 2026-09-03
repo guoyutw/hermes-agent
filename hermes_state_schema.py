@@ -689,6 +689,19 @@ class SessionSchemaMixin:
         Version-gated migration blocks are no longer needed for ADD COLUMN.
         """
         expected = self._parse_schema_columns(SCHEMA_SQL)
+
+        # v27 originally shipped ``compression_boundaries`` without the two
+        # JSON payload columns.  Existing databases can therefore already be
+        # stamped at v27 while still carrying that older table shape.  Keep
+        # these additions explicit as well as declarative so a stale parser
+        # cache or a same-version rollout cannot strand boundary writes.
+        # The PRAGMA diff below is SQLite's portable equivalent of
+        # ``ADD COLUMN IF NOT EXISTS`` and makes this safely rerunnable.
+        expected.setdefault("compression_boundaries", {}).update({
+            "snapshot_json": "TEXT",
+            "protected_block_json": "TEXT",
+        })
+
         for table_name, declared_cols in expected.items():
             # Get current columns from the live table
             try:

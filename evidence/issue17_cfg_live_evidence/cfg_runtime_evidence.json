@@ -1,0 +1,253 @@
+{
+  "artifact_sha256": {
+    "cfg_runtime_evidence.db": "b2121dec1bd297d79d039cb9cff4ff2a22e85700f30e45368e6832255b273559",
+    "cfg_runtime_evidence.log": "b5bc694f0be661f86d27ff5c84e036365f1d26ef6c83b354ac0d40025d47eb28",
+    "run_cfg_runtime_evidence.py": "58e80eaa3dec974a7268337a463b31a66c5b4f291ae568adf429befb84924a23"
+  },
+  "artifacts": {
+    "db": "D:\\OneDrive\\hermes_lulumi\\_internal\\runtime\\working\\issue17_cfg_live_evidence\\cfg_runtime_evidence.db",
+    "json": "D:\\OneDrive\\hermes_lulumi\\_internal\\runtime\\working\\issue17_cfg_live_evidence\\cfg_runtime_evidence.json",
+    "log": "D:\\OneDrive\\hermes_lulumi\\_internal\\runtime\\working\\issue17_cfg_live_evidence\\cfg_runtime_evidence.log"
+  },
+  "baseline_boundary_count": 68,
+  "boundary_count": 70,
+  "checks": [
+    {
+      "active_readback_count": 4,
+      "archived_pre_watermark_count": 6,
+      "boundary_id": "cb1_a87c4ca5d6730dd359e2309f5b45dc7474bcd334ed6017e7bb18d04921c10314",
+      "boundary_new": true,
+      "boundary_seq": 1,
+      "continued_use": true,
+      "expected_pre_watermark_count": 6,
+      "hashes_distinct": true,
+      "no_loss": true,
+      "post_watermark_active_count": 4,
+      "protected_block_sha256": "2902d327f9df99e5428617bed54543222f8ce1bfd30f9c7f23b16cc657f0f8e0",
+      "route": "manual",
+      "session_id": "cfg-evidence-manual-20260903T000139_ab72d056",
+      "snapshot_payload_readback": true,
+      "snapshot_sha256": "8f1d734f577dce7080f3e715a96d66ad3378ab434c8518c9ac05c9f67c77642c"
+    },
+    {
+      "active_readback_count": 4,
+      "archived_pre_watermark_count": 8,
+      "boundary_id": "cb1_cf1116f56a1ff8c82edf29de24fb832f66a8066fec04dc796b5331bcf3ee09a4",
+      "boundary_new": true,
+      "boundary_seq": 1,
+      "continued_use": true,
+      "expected_pre_watermark_count": 8,
+      "hashes_distinct": true,
+      "no_loss": true,
+      "post_watermark_active_count": 4,
+      "protected_block_sha256": "90baf0284ba355236bd11afbefd35bdca00a20774e1a1891d789b63b8033fe98",
+      "route": "gateway_hygiene",
+      "session_id": "cfg-evidence-hygiene-20260903T000139_ab72d056",
+      "snapshot_payload_readback": true,
+      "snapshot_sha256": "ed70751a1608c0ab7530b98e9c1c9f64a862c0e8bd6e81c32561cff1908d5cc1"
+    }
+  ],
+  "continued_use": true,
+  "current_candidate": {
+    "conversation_compression_sha256": "5b145f7a3b93b0c184b316259773cc0456d5f292350f8a594cb7bf20e569b8b3",
+    "gateway_run_sha256": "5fa7abf2b2728625d92ef5811e88110a6755f24622d76582645a161f29e1fe47"
+  },
+  "distinct_route_snapshot_hashes": true,
+  "fresh_boundaries": [
+    {
+      "boundary_seq": 1,
+      "committed_at": "1788393701.7226062",
+      "compression_boundary_id": "cb1_a87c4ca5d6730dd359e2309f5b45dc7474bcd334ed6017e7bb18d04921c10314",
+      "created_at": "2026-09-03T08:01:41.720606+08:00",
+      "guard_version": "compression-fidelity-guard-v0.2",
+      "mode": "IN_PLACE",
+      "protected_block": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "6",
+              "session_id": "cfg-evidence-manual-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "6",
+              "session_id": "cfg-evidence-manual-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [
+                {
+                  "content": "verify manual",
+                  "id": "manual-task",
+                  "status": "in_progress"
+                }
+              ],
+              "state": "IN_PROGRESS"
+            }
+          }
+        ],
+        "schema_version": "pb-v1"
+      },
+      "protected_block_sha256": "2902d327f9df99e5428617bed54543222f8ce1bfd30f9c7f23b16cc657f0f8e0",
+      "record_integrity_sha256": null,
+      "snapshot": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "6",
+              "session_id": "cfg-evidence-manual-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "6",
+              "session_id": "cfg-evidence-manual-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [
+                {
+                  "content": "verify manual",
+                  "id": "manual-task",
+                  "status": "in_progress"
+                }
+              ],
+              "state": "IN_PROGRESS"
+            }
+          }
+        ],
+        "schema_version": "ps-v1",
+        "supersessions": []
+      },
+      "snapshot_id": "ps1_8f1d734f577dce7080f3e715a96d66ad3378ab434c8518c9ac05c9f67c77642c",
+      "snapshot_sha256": "8f1d734f577dce7080f3e715a96d66ad3378ab434c8518c9ac05c9f67c77642c",
+      "source_session_id": "cfg-evidence-manual-20260903T000139_ab72d056",
+      "target_session_id": "cfg-evidence-manual-20260903T000139_ab72d056"
+    },
+    {
+      "boundary_seq": 1,
+      "committed_at": "1788393702.0764356",
+      "compression_boundary_id": "cb1_cf1116f56a1ff8c82edf29de24fb832f66a8066fec04dc796b5331bcf3ee09a4",
+      "created_at": "2026-09-03T08:01:42.075436+08:00",
+      "guard_version": "compression-fidelity-guard-v0.2",
+      "mode": "IN_PLACE",
+      "protected_block": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "398795",
+              "session_id": "cfg-evidence-hygiene-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "398795",
+              "session_id": "cfg-evidence-hygiene-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [
+                {
+                  "content": "verify gateway_hygiene",
+                  "id": "gateway_hygiene-task",
+                  "status": "in_progress"
+                }
+              ],
+              "state": "IN_PROGRESS"
+            }
+          }
+        ],
+        "schema_version": "pb-v1"
+      },
+      "protected_block_sha256": "90baf0284ba355236bd11afbefd35bdca00a20774e1a1891d789b63b8033fe98",
+      "record_integrity_sha256": null,
+      "snapshot": {
+        "facts": [
+          {
+            "authority_identity": "agent.session.lifecycle",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "lifecycle_state",
+            "provenance": {
+              "message_id": "398795",
+              "session_id": "cfg-evidence-hygiene-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": "ACTIVE"
+          },
+          {
+            "authority_identity": "agent.todo_store",
+            "capture_source": "CALLER_ANNOTATED",
+            "capture_status": "CAPTURED",
+            "fact_kind": "task_state",
+            "provenance": {
+              "message_id": "398795",
+              "session_id": "cfg-evidence-hygiene-20260903T000139_ab72d056"
+            },
+            "schema_version": "pf-v1",
+            "value": {
+              "active_todos": [
+                {
+                  "content": "verify gateway_hygiene",
+                  "id": "gateway_hygiene-task",
+                  "status": "in_progress"
+                }
+              ],
+              "state": "IN_PROGRESS"
+            }
+          }
+        ],
+        "schema_version": "ps-v1",
+        "supersessions": []
+      },
+      "snapshot_id": "ps1_ed70751a1608c0ab7530b98e9c1c9f64a862c0e8bd6e81c32561cff1908d5cc1",
+      "snapshot_sha256": "ed70751a1608c0ab7530b98e9c1c9f64a862c0e8bd6e81c32561cff1908d5cc1",
+      "source_session_id": "cfg-evidence-hygiene-20260903T000139_ab72d056",
+      "target_session_id": "cfg-evidence-hygiene-20260903T000139_ab72d056"
+    }
+  ],
+  "generated_at": "2026-09-03T00:01:48.107110+00:00",
+  "hermes_repo": "C:\\Users\\a9594\\AppData\\Local\\hermes\\hermes-agent",
+  "log_witness": {
+    "boundary_committed_count": 2,
+    "fidelity_guard_pass_count": 2,
+    "gateway_hygiene_threshold_triggered": true
+  },
+  "new_boundary_count": 2,
+  "no_loss": true,
+  "run_id": "20260903T000139_ab72d056",
+  "schema_version": 2,
+  "source_state_db": "C:\\Users\\a9594\\AppData\\Local\\hermes\\state.db",
+  "success": true
+}

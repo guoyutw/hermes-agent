@@ -1,0 +1,7 @@
+compression:
+  enabled: true
+  threshold: 0.01
+  hygiene_hard_message_limit: 4
+  hygiene_timeout_seconds: 10
+  hygiene_total_ceiling_seconds: 30
+  hygiene_max_turn_hold_seconds: 10

@@ -51,6 +51,27 @@ _SYNC_DRAIN_TIMEOUT_S = 5.0
 _EXTERNAL_PREFETCH_TIMEOUT_S = 8.0
 
 
+class _BoundaryIdempotencyUnavailable(RuntimeError):
+    """Provider cannot safely replay a post-commit boundary dispatch."""
+
+
+def _emit_memory_finalization_event(
+    event: str,
+    *,
+    boundary_id: str,
+    provider_id: str,
+    attempt_count: int,
+    error_class: Optional[str] = None,
+) -> None:
+    """Emit one bounded normative finalization lifecycle event."""
+    fields = (
+        f"boundary={boundary_id} provider={provider_id} attempt={attempt_count}"
+    )
+    if error_class:
+        fields += f" error_class={error_class}"
+    logger.info("%s %s", event, fields)
+
+
 def normalize_tool_schema(schema: Any) -> Optional[Dict[str, Any]]:
     """Return a function-tool dict with a resolvable top-level ``name``.
 
@@ -407,8 +428,14 @@ class MemoryManager:
     provider is allowed.  Failures in one provider never block the other.
     """
 
-    def __init__(self, *, external_prefetch_timeout: Optional[float] = None) -> None:
+    def __init__(
+        self,
+        *,
+        external_prefetch_timeout: Optional[float] = None,
+        session_db: Any = None,
+    ) -> None:
         self._providers: List[MemoryProvider] = []
+        self._session_db = session_db
         self._tool_to_provider: Dict[str, MemoryProvider] = {}
         self._has_external: bool = False  # True once a non-builtin provider is added
         self._external_prefetch_timeout = (
@@ -1141,6 +1168,178 @@ class MemoryManager:
                 f"API v{checkpoint_api_version}"
             )
         return "\n\n".join(parts)
+
+    _BOUNDARY_REQUIRED_FIELDS = (
+        "compression_boundary_id",
+        "source_session_id",
+        "target_session_id",
+        "mode",
+        "old_session_identity",
+        "committed_transcript_reference",
+        "snapshot_id",
+        "snapshot_sha256",
+        "protected_block_sha256",
+        "guard_version",
+    )
+    _BOUNDARY_IDEMPOTENCY_MODES = {"native", "durable_dedupe"}
+
+    def finalize_memory_for_boundary(
+        self,
+        boundary_context: Dict[str, Any],
+        *,
+        session_db: Any = None,
+        max_attempts: int = 3,
+    ) -> Dict[str, Dict[str, Any]]:
+        """Run provider durable work only after a compression boundary committed.
+
+        The SessionDB provider ledger is the dispatch authority. Each provider
+        row is atomically claimed before invocation, COMPLETE is terminal, and
+        FAILED rows can be reclaimed up to ``max_attempts`` with the same
+        boundary id as the provider idempotency key. Provider exceptions are
+        converted to bounded error classes and never escape to the already-
+        committed conversation boundary.
+
+        A ledger alone cannot prevent replay after a process dies between an
+        external side effect and marking COMPLETE. Providers must therefore
+        declare ``boundary_finalization_idempotency`` as ``native`` or
+        ``durable_dedupe``; all others are failed closed without dispatch.
+        """
+        context = dict(boundary_context or {})
+        missing = [field for field in self._BOUNDARY_REQUIRED_FIELDS if not context.get(field)]
+        if missing:
+            raise ValueError(
+                "compression boundary context missing fields: " + ", ".join(missing)
+            )
+        if max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        session_db = session_db or self._session_db
+        if session_db is None:
+            raise RuntimeError("compression boundary finalization requires SessionDB")
+
+        boundary_id = str(context["compression_boundary_id"])
+        if session_db.get_compression_boundary(boundary_id) is None:
+            raise RuntimeError(f"compression boundary not committed: {boundary_id}")
+
+        results: Dict[str, Dict[str, Any]] = {}
+        for provider in self._providers:
+            provider_id = str(provider.name)
+            row = session_db.get_provider_finalization(boundary_id, provider_id)
+            if row is None:
+                continue  # Provider was not admitted into this boundary ledger.
+            if row["status"] == "COMPLETE":
+                _emit_memory_finalization_event(
+                    "MEMORY_FINALIZATION_REPLAY_SKIPPED",
+                    boundary_id=boundary_id,
+                    provider_id=provider_id,
+                    attempt_count=int(row.get("attempt_count") or 0),
+                )
+                results[provider_id] = {**row, "disposition": "already_complete"}
+                continue
+            replaying_pending = row["status"] == "PENDING"
+            if int(row.get("attempt_count") or 0) >= max_attempts and not replaying_pending:
+                results[provider_id] = {**row, "disposition": "retry_exhausted"}
+                continue
+
+            idempotency_mode = getattr(
+                provider, "boundary_finalization_idempotency", "none"
+            )
+            hook = getattr(provider, "finalize_memory_for_boundary", None)
+            if replaying_pending:
+                checker = getattr(provider, "has_finalized_boundary", None)
+                if callable(checker) and checker(idempotency_key=boundary_id):
+                    completed = session_db.complete_provider_finalization(
+                        boundary_id, provider_id
+                    )
+                    _emit_memory_finalization_event(
+                        "MEMORY_FINALIZATION_REPLAY_SKIPPED",
+                        boundary_id=boundary_id,
+                        provider_id=provider_id,
+                        attempt_count=int(completed.get("attempt_count") or 0),
+                    )
+                    results[provider_id] = {
+                        **completed, "disposition": "replay_skipped"
+                    }
+                    continue
+                claimed = row
+            else:
+                try:
+                    claimed = session_db.claim_provider_finalization_attempt(
+                        boundary_id, provider_id
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Memory boundary %s provider '%s' claim failed: %s",
+                        boundary_id, provider_id, type(exc).__name__,
+                    )
+                    results[provider_id] = {
+                        **row,
+                        "disposition": "claim_failed",
+                        "error_class": type(exc).__name__[:255],
+                    }
+                    continue
+                if claimed["status"] == "COMPLETE":
+                    _emit_memory_finalization_event(
+                        "MEMORY_FINALIZATION_REPLAY_SKIPPED",
+                        boundary_id=boundary_id,
+                        provider_id=provider_id,
+                        attempt_count=int(claimed.get("attempt_count") or 0),
+                    )
+                    results[provider_id] = {**claimed, "disposition": "already_complete"}
+                    continue
+                _emit_memory_finalization_event(
+                    "MEMORY_FINALIZATION_PENDING",
+                    boundary_id=boundary_id,
+                    provider_id=provider_id,
+                    attempt_count=int(claimed.get("attempt_count") or 0),
+                )
+
+            try:
+                if idempotency_mode not in self._BOUNDARY_IDEMPOTENCY_MODES or not callable(hook):
+                    raise _BoundaryIdempotencyUnavailable()
+                hook(context, idempotency_key=boundary_id)
+                completed = session_db.complete_provider_finalization(
+                    boundary_id, provider_id
+                )
+                _emit_memory_finalization_event(
+                    "MEMORY_FINALIZATION_COMPLETE",
+                    boundary_id=boundary_id,
+                    provider_id=provider_id,
+                    attempt_count=int(completed.get("attempt_count") or 0),
+                )
+                results[provider_id] = {**completed, "disposition": "completed"}
+            except Exception as exc:
+                error_class = (
+                    "IdempotencyUnavailable"
+                    if isinstance(exc, _BoundaryIdempotencyUnavailable)
+                    else type(exc).__name__[:255] or "ProviderError"
+                )
+                try:
+                    failed = session_db.fail_provider_finalization(
+                        boundary_id, provider_id, error_class
+                    )
+                    _emit_memory_finalization_event(
+                        "MEMORY_FINALIZATION_FAILED",
+                        boundary_id=boundary_id,
+                        provider_id=provider_id,
+                        attempt_count=int(failed.get("attempt_count") or 0),
+                        error_class=error_class,
+                    )
+                    results[provider_id] = {**failed, "disposition": "failed"}
+                except Exception as ledger_exc:
+                    logger.error(
+                        "Memory boundary %s provider '%s' failure could not be ledgered: %s",
+                        boundary_id, provider_id, type(ledger_exc).__name__,
+                    )
+                    results[provider_id] = {
+                        **claimed,
+                        "disposition": "failure_ledger_error",
+                        "error_class": error_class,
+                    }
+                logger.warning(
+                    "Memory boundary %s provider '%s' finalization failed: %s",
+                    boundary_id, provider_id, error_class,
+                )
+        return results
 
     @staticmethod
     def _provider_memory_write_metadata_mode(provider: MemoryProvider) -> str:

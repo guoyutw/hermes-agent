@@ -55,7 +55,7 @@ from hermes_constants import get_hermes_home
 from hermes_cli.sqlite_runtime import (
     is_sqlite_wal_reset_vulnerable as _is_sqlite_wal_reset_vulnerable,
 )
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, TypeVar
 
 from hermes_state_common import (  # noqa: F401  (re-exported for back-compat)
     _BRANCH_CHILD_SQL,
@@ -7047,6 +7047,8 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         require_compression_lease: bool = True,
         watermark: Optional[int] = None,
         watermark_ceiling: Optional[int] = None,
+        boundary: Optional[Dict[str, Any]] = None,
+        provider_ids: Optional[Sequence[str]] = None,
     ) -> None:
         """Atomically close a parent and publish its durable compression child.
 
@@ -7188,6 +7190,16 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                 raise RuntimeError(
                     f"Compression parent changed during publication: {parent_session_id}"
                 )
+            if boundary is not None:
+                if boundary.get("source_session_id") != parent_session_id:
+                    raise ValueError("rotation boundary source must match parent session")
+                if boundary.get("target_session_id") != child_session_id:
+                    raise ValueError("rotation boundary target must match child session")
+                if boundary.get("mode") != "ROTATION":
+                    raise ValueError("publish_compression_child requires a ROTATION boundary")
+                self._insert_compression_boundary(conn, boundary, provider_ids)
+            elif provider_ids:
+                raise ValueError("provider_ids require a compression boundary")
 
         self._execute_write(_do)
 
@@ -11765,6 +11777,240 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             ).fetchone()
         return int(row[0]) if row else 0
 
+    def allocate_compression_boundary_seq(self, source_session_id: str) -> int:
+        """Durably allocate the next source-scoped boundary sequence.
+
+        Allocation is deliberately separate from boundary publication: guard or
+        commit failures leave gaps, and the state_meta high-water mark prevents
+        a later attempt from reusing an abandoned sequence.
+        """
+        if not source_session_id:
+            raise ValueError("source_session_id must not be empty")
+        key = f"compression_boundary_seq:{source_session_id}"
+
+        def _do(conn):
+            row = conn.execute(
+                "SELECT value FROM state_meta WHERE key = ?", (key,)
+            ).fetchone()
+            allocated = int(row["value"] if row else 0)
+            committed = conn.execute(
+                "SELECT COALESCE(MAX(boundary_seq), 0) FROM compression_boundaries "
+                "WHERE source_session_id = ?",
+                (source_session_id,),
+            ).fetchone()[0]
+            next_seq = max(allocated, int(committed or 0)) + 1
+            conn.execute(
+                "INSERT INTO state_meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, str(next_seq)),
+            )
+            return next_seq
+
+        return int(self._execute_write(_do))
+
+    @staticmethod
+    def _row_dict(row: Optional[sqlite3.Row]) -> Optional[Dict[str, Any]]:
+        return dict(row) if row is not None else None
+
+    def _insert_compression_boundary(
+        self,
+        conn: sqlite3.Connection,
+        boundary: Dict[str, Any],
+        provider_ids: Optional[Sequence[str]] = None,
+    ) -> None:
+        """Insert one admitted boundary and its initial ledger rows.
+
+        This helper owns no transaction and never commits. Callers must invoke
+        it from the same ``_execute_write`` callback that publishes the
+        compacted transcript or rotation child.
+        """
+        fields = (
+            "compression_boundary_id", "source_session_id", "target_session_id",
+            "mode", "boundary_seq", "snapshot_id", "snapshot_sha256",
+            "protected_block_sha256", "snapshot_json", "protected_block_json",
+            "guard_version", "created_at", "committed_at",
+        )
+        missing = [field for field in fields if boundary.get(field) is None]
+        if missing:
+            raise ValueError(f"compression boundary missing fields: {', '.join(missing)}")
+        values = dict(boundary)
+        values["snapshot_json"] = json.dumps(
+            boundary["snapshot_json"], sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False,
+        )
+        values["protected_block_json"] = json.dumps(
+            boundary["protected_block_json"], sort_keys=True, ensure_ascii=False,
+            separators=(",", ":"), allow_nan=False,
+        )
+        conn.execute(
+            "INSERT INTO compression_boundaries ("
+            + ", ".join(fields)
+            + ") VALUES (" + ", ".join("?" for _ in fields) + ")",
+            tuple(values[field] for field in fields),
+        )
+        for provider_id in dict.fromkeys(provider_ids or ()):
+            if not provider_id:
+                raise ValueError("provider_id must not be empty")
+            conn.execute(
+                "INSERT INTO compression_boundary_provider_finalizations "
+                "(compression_boundary_id, provider_id, status, attempt_count, "
+                "last_error_class, updated_at) VALUES (?, ?, 'NOT_STARTED', 0, NULL, ?)",
+                (boundary["compression_boundary_id"], provider_id, boundary["committed_at"]),
+            )
+
+    @staticmethod
+    def _decode_compression_boundary_row(
+        row: Optional[sqlite3.Row],
+    ) -> Optional[Dict[str, Any]]:
+        if row is None:
+            return None
+        result = dict(row)
+        for column, public_name in (
+            ("snapshot_json", "snapshot"),
+            ("protected_block_json", "protected_block"),
+        ):
+            raw = result.pop(column, None)
+            result[public_name] = json.loads(raw) if raw else None
+        return result
+
+    def get_compression_boundary(self, compression_boundary_id: str) -> Optional[Dict[str, Any]]:
+        with self._read_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM compression_boundaries WHERE compression_boundary_id = ?",
+                (compression_boundary_id,),
+            ).fetchone()
+        return self._decode_compression_boundary_row(row)
+
+    def get_latest_compression_boundary(
+        self, session_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Resolve the newest durable snapshot→block→boundary for a session."""
+        with self._read_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM compression_boundaries "
+                "WHERE source_session_id = ? OR target_session_id = ? "
+                "ORDER BY committed_at DESC, boundary_seq DESC LIMIT 1",
+                (session_id, session_id),
+            ).fetchone()
+        return self._decode_compression_boundary_row(row)
+
+    def get_provider_finalization(
+        self, compression_boundary_id: str, provider_id: str
+    ) -> Optional[Dict[str, Any]]:
+        with self._read_ctx() as conn:
+            row = conn.execute(
+                "SELECT * FROM compression_boundary_provider_finalizations "
+                "WHERE compression_boundary_id = ? AND provider_id = ?",
+                (compression_boundary_id, provider_id),
+            ).fetchone()
+        return self._row_dict(row)
+
+    def _transition_provider_finalization(
+        self,
+        compression_boundary_id: str,
+        provider_id: str,
+        allowed_statuses: Sequence[str],
+        next_status: str,
+        *,
+        increment_attempt: bool = False,
+        last_error_class: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        def _do(conn):
+            row = conn.execute(
+                "SELECT * FROM compression_boundary_provider_finalizations "
+                "WHERE compression_boundary_id = ? AND provider_id = ?",
+                (compression_boundary_id, provider_id),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(
+                    "provider finalization row not found: "
+                    f"{compression_boundary_id}/{provider_id}"
+                )
+            if row["status"] not in allowed_statuses:
+                raise RuntimeError(
+                    "illegal provider finalization transition: "
+                    f"{row['status']} -> {next_status}"
+                )
+            now = time.time()
+            updated = conn.execute(
+                "UPDATE compression_boundary_provider_finalizations SET status = ?, "
+                "attempt_count = attempt_count + ?, last_error_class = ?, updated_at = ? "
+                "WHERE compression_boundary_id = ? AND provider_id = ? AND status = ?",
+                (
+                    next_status, 1 if increment_attempt else 0, last_error_class, now,
+                    compression_boundary_id, provider_id, row["status"],
+                ),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError("provider finalization transition lost atomic claim")
+            return dict(conn.execute(
+                "SELECT * FROM compression_boundary_provider_finalizations "
+                "WHERE compression_boundary_id = ? AND provider_id = ?",
+                (compression_boundary_id, provider_id),
+            ).fetchone())
+
+        return self._execute_write(_do)
+
+    def claim_provider_finalization_attempt(
+        self, compression_boundary_id: str, provider_id: str
+    ) -> Dict[str, Any]:
+        def _do(conn):
+            row = conn.execute(
+                "SELECT * FROM compression_boundary_provider_finalizations "
+                "WHERE compression_boundary_id = ? AND provider_id = ?",
+                (compression_boundary_id, provider_id),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(
+                    "provider finalization row not found: "
+                    f"{compression_boundary_id}/{provider_id}"
+                )
+            if row["status"] == "COMPLETE":
+                return dict(row)
+            if row["status"] not in ("NOT_STARTED", "FAILED"):
+                raise RuntimeError(
+                    "illegal provider finalization transition: "
+                    f"{row['status']} -> PENDING"
+                )
+            updated = conn.execute(
+                "UPDATE compression_boundary_provider_finalizations "
+                "SET status = 'PENDING', attempt_count = attempt_count + 1, "
+                "last_error_class = NULL, updated_at = ? "
+                "WHERE compression_boundary_id = ? AND provider_id = ? AND status = ?",
+                (time.time(), compression_boundary_id, provider_id, row["status"]),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError("provider finalization transition lost atomic claim")
+            return dict(conn.execute(
+                "SELECT * FROM compression_boundary_provider_finalizations "
+                "WHERE compression_boundary_id = ? AND provider_id = ?",
+                (compression_boundary_id, provider_id),
+            ).fetchone())
+
+        return self._execute_write(_do)
+
+    def complete_provider_finalization(
+        self, compression_boundary_id: str, provider_id: str
+    ) -> Dict[str, Any]:
+        return self._transition_provider_finalization(
+            compression_boundary_id, provider_id, ("PENDING",), "COMPLETE"
+        )
+
+    def fail_provider_finalization(
+        self, compression_boundary_id: str, provider_id: str, last_error_class: str
+    ) -> Dict[str, Any]:
+        if (
+            not last_error_class
+            or len(last_error_class) > 255
+            or "\n" in last_error_class
+            or "\r" in last_error_class
+        ):
+            raise ValueError("last_error_class must be a bounded error class")
+        return self._transition_provider_finalization(
+            compression_boundary_id, provider_id, ("PENDING",), "FAILED",
+            last_error_class=last_error_class,
+        )
+
     def archive_and_compact(
         self,
         session_id: str,
@@ -11772,6 +12018,8 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
         model_config_patch: Optional[Dict[str, Any]] = None,
         watermark: Optional[int] = None,
         lock_holder: Optional[str] = None,
+        boundary: Optional[Dict[str, Any]] = None,
+        provider_ids: Optional[Sequence[str]] = None,
     ) -> int:
         """Non-destructive in-place compaction for a single durable session id.
 
@@ -11913,6 +12161,16 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
                     "model_config = ? WHERE id = ?",
                     (inserted, tool_calls_total, patched_model_config, session_id),
                 )
+            if boundary is not None:
+                if boundary.get("source_session_id") != session_id:
+                    raise ValueError("in-place boundary source must match compacted session")
+                if boundary.get("target_session_id") != session_id:
+                    raise ValueError("in-place boundary target must match compacted session")
+                if boundary.get("mode") != "IN_PLACE":
+                    raise ValueError("archive_and_compact requires an IN_PLACE boundary")
+                self._insert_compression_boundary(conn, boundary, provider_ids)
+            elif provider_ids:
+                raise ValueError("provider_ids require a compression boundary")
             return inserted
 
         return self._execute_write(_do)

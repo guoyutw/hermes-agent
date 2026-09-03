@@ -1,0 +1,123 @@
+...........................................FFFFFFFFF                     [100%]
+================================== FAILURES ===================================
+_________ test_session_hygiene_preserves_transcript_when_no_rotation __________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+______ test_session_hygiene_no_rotation_does_not_clear_a_failure_streak _______
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+_ test_session_hygiene_preserves_transcript_when_in_place_configured_but_no_db _
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+______ test_session_hygiene_timeout_continues_to_agent_and_sets_cooldown ______
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+________ test_session_hygiene_turn_hold_budget_abandons_streaming_wait ________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+_________ test_session_hygiene_idle_timeout_still_takes_failure_path __________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+____ test_session_hygiene_forces_in_place_compaction_with_bound_session_db ____
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+_________ test_session_hygiene_honors_configurable_hard_message_limit _________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+_________ test_hygiene_compression_cooldown_survives_gateway_restart __________
+async def functions are not natively supported.
+You need to install a suitable plugin for your async framework, for example:
+  - anyio
+  - pytest-asyncio
+  - pytest-tornasync
+  - pytest-trio
+  - pytest-twisted
+============================== warnings summary ===============================
+tests\gateway\test_session_hygiene.py:217
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:217: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:339
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:339: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:380
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:380: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:479
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:479: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:636
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:636: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:832
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:832: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:980
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:980: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:1139
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:1139: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+tests\gateway\test_session_hygiene.py:1425
+  C:\Users\a9594\AppData\Local\hermes\hermes-agent\tests\gateway\test_session_hygiene.py:1425: PytestUnknownMarkWarning: Unknown pytest.mark.asyncio - is this a typo?  You can register custom marks to avoid this warning - for details, see https://docs.pytest.org/en/stable/how-to/mark.html
+    @pytest.mark.asyncio
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_preserves_transcript_when_no_rotation
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_no_rotation_does_not_clear_a_failure_streak
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_preserves_transcript_when_in_place_configured_but_no_db
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_timeout_continues_to_agent_and_sets_cooldown
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_turn_hold_budget_abandons_streaming_wait
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_idle_timeout_still_takes_failure_path
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_forces_in_place_compaction_with_bound_session_db
+FAILED tests/gateway/test_session_hygiene.py::test_session_hygiene_honors_configurable_hard_message_limit
+FAILED tests/gateway/test_session_hygiene.py::test_hygiene_compression_cooldown_survives_gateway_restart
+9 failed, 43 passed, 9 warnings in 2.48s

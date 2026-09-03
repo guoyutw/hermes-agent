@@ -342,40 +342,51 @@ class ByteRoverMemoryProvider(MemoryProvider):
         t = threading.Thread(target=_write, daemon=True, name="brv-memwrite")
         t.start()
 
+    # brv curate has no native idempotency key and no transactionally durable
+    # dedupe primitive. MemoryManager therefore blocks this hook in production
+    # until ByteRover exposes one; the hook lives here (post-commit), never in
+    # on_pre_compress, so adding that capability cannot reintroduce the leak.
+    boundary_finalization_idempotency = "none"
+
     def on_pre_compress(self, messages: List[Dict[str, Any]]) -> str:
-        """Extract insights before context compression discards turns."""
-        if not self._auto_extract:
-            logger.debug("ByteRover pre-compression flush skipped (auto_extract disabled)")
-            return ""
-        if not messages:
-            return ""
-
-        # Build a summary of messages about to be compressed
-        parts = []
-        for msg in messages[-10:]:  # last 10 messages
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            if isinstance(content, str) and content.strip() and role in {"user", "assistant"}:
-                parts.append(f"{role}: {content[:500]}")
-
-        if not parts:
-            return ""
-
-        combined = "\n".join(parts)
-
-        def _flush():
-            try:
-                _run_brv(
-                    ["curate", "--", f"[Pre-compression context]\n{combined}"],
-                    timeout=_CURATE_TIMEOUT, cwd=self._cwd,
-                )
-                logger.info("ByteRover pre-compression flush: %d messages", len(parts))
-            except Exception as e:
-                logger.debug("ByteRover pre-compression flush failed: %s", e)
-
-        t = threading.Thread(target=_flush, daemon=True, name="brv-flush")
-        t.start()
+        """Observational-only compression hook; performs no durable writes."""
         return ""
+
+    def finalize_memory_for_boundary(
+        self, boundary_context: Dict[str, Any], *, idempotency_key: str
+    ) -> None:
+        """Curate committed-boundary context (called only via safe dispatch)."""
+        if not self._auto_extract:
+            logger.debug("ByteRover boundary finalization skipped (auto_extract disabled)")
+            return
+        payload = {
+            key: boundary_context.get(key)
+            for key in (
+                "compression_boundary_id",
+                "source_session_id",
+                "target_session_id",
+                "mode",
+                "old_session_identity",
+                "snapshot_id",
+                "snapshot_sha256",
+                "protected_block_sha256",
+                "guard_version",
+            )
+        }
+        payload["idempotency_key"] = idempotency_key
+        result = _run_brv(
+            [
+                "curate",
+                "--",
+                "[Committed compression boundary]\n"
+                + json.dumps(payload, sort_keys=True, ensure_ascii=False),
+            ],
+            timeout=_CURATE_TIMEOUT,
+            cwd=self._cwd,
+        )
+        if not result.get("success"):
+            raise RuntimeError("ByteRover boundary curate failed")
+        logger.info("ByteRover committed-boundary curate: %s", idempotency_key)
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
         return [QUERY_SCHEMA, CURATE_SCHEMA, STATUS_SCHEMA]

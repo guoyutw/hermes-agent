@@ -58,6 +58,7 @@ import json
 import logging
 import math
 import os
+import subprocess
 import tempfile
 import time
 import uuid
@@ -77,8 +78,290 @@ from agent.model_metadata import (
     estimate_request_tokens_rough,
 )
 from agent.session_activity import ActivityProvenance, normalize_activity_provenance
+from compression_fidelity_guard_v2 import (
+    GUARD_VERSION,
+    FactKind,
+    FidelityReason,
+    FidelityResult,
+    ProtectedBlock,
+    ProtectedStateSnapshot,
+    canonical_json,
+    make_boundary,
+    sha256_hex,
+    validate_protected_block,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class CompressionGuardFailure(RuntimeError):
+    """A candidate failed the deterministic fidelity guard before commit."""
+
+
+class CompressionCommitFailure(RuntimeError):
+    """The admitted boundary failed during its authoritative DB commit."""
+
+
+def _committed_transcript_reference(
+    session_db: Any,
+    *,
+    source_session_id: str,
+    target_session_id: str,
+    source_message_watermark: Optional[int],
+) -> dict[str, Any]:
+    """Return a bounded locator for the exact committed DB transcript state."""
+    active_ids = session_db.get_active_message_ids(target_session_id)
+    return {
+        "kind": "session_db_boundary",
+        "source_session_id": source_session_id,
+        "target_session_id": target_session_id,
+        "source_message_watermark": source_message_watermark,
+        "target_active_message_ids": [int(message_id) for message_id in active_ids],
+    }
+
+
+def _cfg_provider_ids(agent: Any) -> list[str]:
+    """Freeze the configured non-builtin provider dispatch set."""
+    manager = getattr(agent, "_memory_manager", None)
+    providers = getattr(manager, "providers", None) or getattr(manager, "_providers", ())
+    return list(dict.fromkeys(
+        str(getattr(provider, "name", type(provider).__name__))
+        for provider in providers
+        if getattr(provider, "name", "") != "builtin"
+    ))
+
+
+_CFG_REQUIRED_CURRENT_KINDS = (
+    FactKind.LIFECYCLE_STATE,
+    FactKind.TASK_STATE,
+)
+_CFG_BLOCK_MARKER = '<protected-block identity="{identity}" sha256="{sha256}"/>'
+_CFG_BLOCK_CONTENT_PREFIX = "[HERMES_PROTECTED_BLOCK_V1]\n"
+
+
+def _cfg_fact(kind: FactKind, value: Any, session_id: str, message_id: str,
+              authority: str, source: str) -> dict[str, Any]:
+    return {
+        "schema_version": "pf-v1",
+        "fact_kind": kind.value,
+        "capture_status": "CAPTURED",
+        "value": value,
+        "provenance": {"session_id": session_id, "message_id": message_id},
+        "authority_identity": authority,
+        "capture_source": source,
+    }
+
+
+def _produce_compression_protected_annotations(
+    agent: Any, messages: Any
+) -> dict[str, Any]:
+    """Capture protected facts from real agent/session state before compression.
+
+    Required lifecycle/task facts are always sourced from the live agent. Optional
+    facts are emitted only when their structured authority exists; prose is never
+    mined or guessed.
+    """
+    session_id = str(getattr(agent, "session_id", "") or "")
+    if not session_id:
+        raise CompressionGuardFailure(FidelityReason.PROVENANCE_MISSING.value)
+
+    session_row: dict[str, Any] = {}
+    db = getattr(agent, "_session_db", None)
+    if db is not None:
+        try:
+            session_row = db.get_session(session_id) or {}
+        except Exception:
+            session_row = {}
+
+    message_id = "session-state"
+    if isinstance(messages, list):
+        for message in reversed(messages):
+            if isinstance(message, dict):
+                candidate_id = message.get("id") or message.get("message_id")
+                if candidate_id is not None:
+                    message_id = str(candidate_id)
+                    break
+    if message_id == "session-state" and db is not None:
+        try:
+            latest = db.get_messages(session_id, limit=1, latest=True)
+            if latest:
+                message_id = str(latest[-1]["id"])
+        except Exception:
+            pass
+
+    lifecycle = "ENDED" if session_row.get("ended_at") is not None else "ACTIVE"
+    todo_store = getattr(agent, "_todo_store", None)
+    try:
+        todos = todo_store.read() if todo_store is not None else []
+    except Exception:
+        todos = []
+    active_todos = [
+        item for item in todos
+        if isinstance(item, dict) and item.get("status") in {"pending", "in_progress"}
+    ]
+    task_state = {
+        "state": "IN_PROGRESS" if active_todos else "CONVERSATION_ACTIVE",
+        "active_todos": active_todos,
+    }
+    facts = [
+        _cfg_fact(FactKind.LIFECYCLE_STATE, lifecycle, session_id, message_id,
+                  "agent.session.lifecycle", "CALLER_ANNOTATED"),
+        _cfg_fact(FactKind.TASK_STATE, task_state, session_id, message_id,
+                  "agent.todo_store", "CALLER_ANNOTATED"),
+    ]
+
+    cwd = session_row.get("cwd") or getattr(agent, "working_dir", None)
+    if cwd:
+        raw_cwd = str(cwd)
+        facts.append(_cfg_fact(
+            FactKind.FILE_PATH,
+            {"raw_value": raw_cwd, "source_domain": "session.cwd",
+             "identity": {"mode": "DOMAIN_EXACT", "value": raw_cwd}},
+            session_id, message_id, "sessions.cwd", "NATIVE_STRUCTURED",
+        ))
+
+    repo_root = session_row.get("git_repo_root")
+    if repo_root:
+        try:
+            commit_sha = subprocess.run(
+                ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=2, check=True,
+            ).stdout.strip()
+            if len(commit_sha) == 40:
+                facts.append(_cfg_fact(
+                    FactKind.COMMIT_SHA, commit_sha, session_id, message_id,
+                    "git:HEAD", "NATIVE_STRUCTURED",
+                ))
+        except (OSError, subprocess.SubprocessError):
+            logger.debug("CFG commit SHA capture unavailable", exc_info=True)
+
+    error_identity = getattr(agent, "_last_error_identity", None)
+    if isinstance(error_identity, dict) and error_identity:
+        facts.append(_cfg_fact(
+            FactKind.ERROR_IDENTITY, copy.deepcopy(error_identity), session_id,
+            message_id, "agent._last_error_identity", "NATIVE_STRUCTURED",
+        ))
+    return {"facts": facts, "required_current_kinds": [
+        FactKind.LIFECYCLE_STATE.value, FactKind.TASK_STATE.value,
+    ]}
+
+
+def _validate_cfg_candidate_identity(candidate: Any, block: ProtectedBlock) -> None:
+    """Require the lossy candidate to carry the exact machine block identity."""
+    expected = _CFG_BLOCK_MARKER.format(
+        identity=block.identity, sha256=sha256_hex(block.to_dict())
+    )
+    occurrences = 0
+    if isinstance(candidate, list):
+        for message in candidate:
+            if isinstance(message, dict) and isinstance(message.get("content"), str):
+                occurrences += message["content"].count(expected)
+    if occurrences != 1:
+        raise CompressionGuardFailure(FidelityReason.CANDIDATE_BLOCK_MISSING.value)
+
+
+def _prepare_cfg_candidate(
+    *, source_session_id: str, target_session_id: str, mode: str,
+    boundary_seq: int, created_at: str,
+    protected_annotations: Any,
+    previous_snapshot: Any,
+    candidate: Any,
+) -> tuple[dict[str, Any], ProtectedStateSnapshot, ProtectedBlock]:
+    """Build and bind a guard candidate from frozen pre-compression evidence."""
+    annotations = protected_annotations if isinstance(protected_annotations, dict) else {}
+    current_facts = annotations.get("facts")
+    if not isinstance(current_facts, list):
+        current_facts = []
+
+    previous_facts: list[Any] = []
+    previous_supersessions: list[Any] = []
+    if previous_snapshot is not None:
+        previous = (
+            previous_snapshot
+            if isinstance(previous_snapshot, ProtectedStateSnapshot)
+            else ProtectedStateSnapshot.from_dict(previous_snapshot)
+        )
+        previous_facts = [fact.to_dict() for fact in previous.facts]
+        previous_supersessions = [item.to_dict() for item in previous.supersessions]
+
+    # Current annotations win by kind. Previous facts remain usable only for
+    # kinds not recaptured at this boundary; explicit supersession evidence is
+    # preserved/extended by the caller rather than inferred from prose.
+    current_kinds = {
+        item.get("fact_kind") for item in current_facts if isinstance(item, dict)
+    }
+    facts = [
+        item for item in previous_facts if item.get("fact_kind") not in current_kinds
+    ] + copy.deepcopy(current_facts)
+    supersessions = previous_supersessions + copy.deepcopy(
+        annotations.get("supersessions", [])
+        if isinstance(annotations.get("supersessions", []), list)
+        else []
+    )
+    snapshot = ProtectedStateSnapshot.from_dict({
+        "schema_version": "ps-v1", "facts": facts, "supersessions": supersessions,
+    })
+    block = ProtectedBlock.from_dict({
+        "schema_version": "pb-v1", "facts": [fact.to_dict() for fact in snapshot.facts],
+    })
+    required = list(_CFG_REQUIRED_CURRENT_KINDS)
+    for kind in annotations.get("required_current_kinds", []):
+        parsed = kind if isinstance(kind, FactKind) else FactKind(kind)
+        if parsed not in required:
+            required.append(parsed)
+    guard_result = validate_protected_block(block, required_current_kinds=required)
+    if guard_result.result is not FidelityResult.PASS:
+        raise CompressionGuardFailure(
+            guard_result.reason.value if guard_result.reason else "UNKNOWN"
+        )
+
+    block_sha256 = sha256_hex(block.to_dict())
+    marker = _CFG_BLOCK_MARKER.format(identity=block.identity, sha256=block_sha256)
+    summary_message = next(
+        (
+            message for message in candidate
+            if isinstance(message, dict) and isinstance(message.get("content"), str)
+        ),
+        None,
+    ) if isinstance(candidate, list) else None
+    if summary_message is None:
+        raise CompressionGuardFailure(FidelityReason.CANDIDATE_BLOCK_MISSING.value)
+    # Fixed structural position immediately after the compressed summary. The
+    # content carries canonical JSON so SQLite message persistence preserves the
+    # complete machine-owned block even when unknown dict keys are not columns.
+    protected_message = {
+        "role": "system",
+        "content": _CFG_BLOCK_CONTENT_PREFIX + marker + "\n" + canonical_json(block),
+        "protected_block": block.to_dict(),
+        "protected_block_identity": block.identity,
+    }
+    candidate.insert(candidate.index(summary_message) + 1, protected_message)
+    _validate_cfg_candidate_identity(candidate, block)
+
+    snapshot_sha256 = sha256_hex(snapshot.to_dict())
+    boundary = make_boundary(
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+        mode=mode,
+        boundary_seq=boundary_seq,
+        guard_version=GUARD_VERSION,
+        snapshot_identity={
+            "snapshot_id": snapshot.identity,
+            "snapshot_sha256": snapshot_sha256,
+        },
+        created_at=created_at,
+    )
+    boundary_row = {
+        **boundary.to_dict(),
+        "snapshot_id": boundary.snapshot_identity["snapshot_id"],
+        "snapshot_sha256": snapshot_sha256,
+        "protected_block_sha256": block_sha256,
+        "snapshot_json": snapshot.to_dict(),
+        "protected_block_json": block.to_dict(),
+        "committed_at": time.time(),
+    }
+    boundary_row.pop("snapshot_identity", None)
+    return boundary_row, snapshot, block
 
 # Terminal compression outcomes published by host/hygiene timeout or cooldown
 # writers. Detached heartbeat workers must not clobber these back to
@@ -3522,6 +3805,44 @@ def compress_context(
                 )
 
         messages_before_compression = copy.deepcopy(messages)
+
+        # Freeze the candidate identity before summary dispatch and before
+        # commit-fence admission. Failed attempts may consume a sequence but
+        # cannot publish a boundary or provider-ledger row.
+        _cfg_boundary = None
+        _cfg_snapshot = None
+        _cfg_block = None
+        _cfg_boundary_seq = None
+        _cfg_provider_plan: list[str] = []
+        # Freeze production-derived evidence before the compressor runs. This is
+        # shared by manual /compress and automatic hygiene because both enter
+        # this function; no test/caller injection is required.
+        _cfg_protected_annotations = _produce_compression_protected_annotations(
+            agent, messages_before_compression
+        )
+        _cfg_previous_snapshot = copy.deepcopy(
+            getattr(agent, "_compression_protected_snapshot", None)
+        )
+        if _cfg_previous_snapshot is None and agent._session_db and agent.session_id:
+            _cfg_get_latest = getattr(
+                agent._session_db, "get_latest_compression_boundary", None
+            )
+            _cfg_latest = _cfg_get_latest(agent.session_id) if callable(_cfg_get_latest) else None
+            if _cfg_latest is not None:
+                _cfg_previous_snapshot = _cfg_latest.get("snapshot")
+        _cfg_source_session_id = agent.session_id or ""
+        _cfg_target_session_id = _cfg_source_session_id
+        _cfg_mode = "IN_PLACE" if in_place else "ROTATION"
+        if agent._session_db and _cfg_source_session_id:
+            if not in_place:
+                _cfg_target_session_id = (
+                    f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
+                    f"{uuid.uuid4().hex[:6]}"
+                )
+            _cfg_boundary_seq = agent._session_db.allocate_compression_boundary_seq(
+                _cfg_source_session_id
+            )
+            _cfg_provider_plan = _cfg_provider_ids(agent)
         _activity_heartbeat = _CompressionActivityHeartbeat(
             agent, commit_fence=commit_fence
         ).start()
@@ -3794,39 +4115,6 @@ def compress_context(
             _release_lock()
             return messages, _existing_sp
 
-        if commit_fence is not None:
-            _commit_fence_entered = commit_fence.begin_commit(_hard_cancel_event)
-            if not _commit_fence_entered:
-                _restore_compressor_attempt_state(
-                    agent.context_compressor,
-                    _compressor_attempt_snapshot,
-                    durable_cooldown_authoritative=_durable_cooldown_authoritative,
-                    durable_cooldown_state=_durable_cooldown_state,
-                    attempt_generation=_attempt_generation,
-                )
-                if (
-                    messages_before_compression is not None
-                    and messages != messages_before_compression
-                ):
-                    messages[:] = copy.deepcopy(messages_before_compression)
-                logger.info(
-                    "Compression commit cancelled before session mutation "
-                    "(session=%s).",
-                    agent.session_id or "none",
-                )
-                agent._last_compaction_in_place = False
-                _existing_sp = getattr(agent, "_cached_system_prompt", None)
-                if not _existing_sp:
-                    _existing_sp = agent._build_system_prompt(system_message)
-                _emit_compression_attempt_telemetry(
-                    agent,
-                    started_at=_attempt_started_at,
-                    commit_status="aborted",
-                    split_status="aborted",
-                    failure_class="commit_fence_cancelled",
-                )
-                _release_lock()
-                return messages, _existing_sp
 
         summary_error = getattr(agent.context_compressor, "_last_summary_error", None)
         if summary_error:
@@ -3973,18 +4261,105 @@ def compress_context(
             new_system_prompt = agent._build_system_prompt(system_message)
             agent._cached_system_prompt = new_system_prompt
 
+        # The deterministic fidelity guard owns admission and MUST run before
+        # the Issue #13 commit fence. A guard failure restores all attempt-owned
+        # compressor state and returns without boundary, ledger, dispatch, or
+        # cooldown publication.
+        if _cfg_boundary_seq is not None:
+            try:
+                _cfg_boundary, _cfg_snapshot, _cfg_block = _prepare_cfg_candidate(
+                    source_session_id=_cfg_source_session_id,
+                    target_session_id=_cfg_target_session_id,
+                    mode=_cfg_mode,
+                    boundary_seq=_cfg_boundary_seq,
+                    created_at=datetime.now().astimezone().isoformat(),
+                    protected_annotations=_cfg_protected_annotations,
+                    previous_snapshot=_cfg_previous_snapshot,
+                    candidate=compressed,
+                )
+                _guard_result = validate_protected_block(
+                    _cfg_block,
+                    required_current_kinds=_CFG_REQUIRED_CURRENT_KINDS,
+                )
+                _validate_cfg_candidate_identity(compressed, _cfg_block)
+                if _guard_result.result is not FidelityResult.PASS:
+                    raise CompressionGuardFailure(
+                        (_guard_result.reason.value if _guard_result.reason else "UNKNOWN")
+                    )
+            except Exception as _guard_raw:
+                _guard_exc = (
+                    _guard_raw
+                    if isinstance(_guard_raw, CompressionGuardFailure)
+                    else CompressionGuardFailure(str(_guard_raw))
+                )
+                _restore_compressor_attempt_state(
+                    agent.context_compressor,
+                    _compressor_attempt_snapshot,
+                    durable_cooldown_authoritative=_durable_cooldown_authoritative,
+                    durable_cooldown_state=_durable_cooldown_state,
+                    attempt_generation=_attempt_generation,
+                )
+                messages[:] = copy.deepcopy(messages_before_compression)
+                logger.warning(
+                    "FIDELITY_GUARD_FAIL boundary=%s reason=%s",
+                    (_cfg_boundary or {}).get("compression_boundary_id", "unbuilt"),
+                    _guard_exc,
+                )
+                _emit_compression_attempt_telemetry(
+                    agent, started_at=_attempt_started_at, commit_status="aborted",
+                    split_status="aborted", failure_class="guard:CompressionGuardFailure",
+                )
+                _existing_sp = getattr(agent, "_cached_system_prompt", None)
+                if not _existing_sp:
+                    _existing_sp = agent._build_system_prompt(system_message)
+                _release_lock()
+                return messages, _existing_sp
+            logger.info(
+                "FIDELITY_GUARD_PASS boundary=%s guard_version=%s",
+                _cfg_boundary["compression_boundary_id"], GUARD_VERSION,
+            )
+
+        if commit_fence is not None:
+            _commit_fence_entered = commit_fence.begin_commit(_hard_cancel_event)
+            if not _commit_fence_entered:
+                _restore_compressor_attempt_state(
+                    agent.context_compressor,
+                    _compressor_attempt_snapshot,
+                    durable_cooldown_authoritative=_durable_cooldown_authoritative,
+                    durable_cooldown_state=_durable_cooldown_state,
+                    attempt_generation=_attempt_generation,
+                )
+                if (
+                    messages_before_compression is not None
+                    and messages != messages_before_compression
+                ):
+                    messages[:] = copy.deepcopy(messages_before_compression)
+                logger.info(
+                    "Compression commit cancelled before session mutation "
+                    "(session=%s).",
+                    agent.session_id or "none",
+                )
+                agent._last_compaction_in_place = False
+                _existing_sp = getattr(agent, "_cached_system_prompt", None)
+                if not _existing_sp:
+                    _existing_sp = agent._build_system_prompt(system_message)
+                _emit_compression_attempt_telemetry(
+                    agent,
+                    started_at=_attempt_started_at,
+                    commit_status="aborted",
+                    split_status="aborted",
+                    failure_class="commit_fence_cancelled",
+                )
+                _release_lock()
+                return messages, _existing_sp
+
+
         _session_commit_succeeded = False
         _commit_started_at = time.monotonic()
         split_status = "not_applicable"
         if agent._session_db:
             split_status = "pending"
             try:
-                # Trigger memory extraction on the current session before the
-                # transcript is rewritten (runs in BOTH modes — the logical
-                # conversation's pre-compaction turns are about to be summarized
-                # away regardless of whether the id rotates).
-                agent.commit_memory_session(messages)
-
                 # Anti-growth guard at the COMMIT SITE: never persist a
                 # compression that makes the transcript larger (observed:
                 # 379K -> 687K when the generated summary plus retained
@@ -4125,6 +4500,8 @@ def compress_context(
                         },
                         watermark=_commit_watermark,
                         lock_holder=_lock_holder,
+                        boundary=_cfg_boundary,
+                        provider_ids=_cfg_provider_plan,
                     )
                     split_status = "in_place_committed"
                     # Reset the flush identity set so the next turn's appends are
@@ -4245,10 +4622,7 @@ def compress_context(
                     except Exception:
                         _profile_for_child = None
                     old_title = agent._session_db.get_session_title(agent.session_id)
-                    new_session_id = (
-                        f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_"
-                        f"{uuid.uuid4().hex[:6]}"
-                    )
+                    new_session_id = _cfg_target_session_id
                     from agent.context_compressor import _DB_PERSISTED_MARKER
                     agent._session_db.publish_compression_child(
                         parent_session_id=old_session_id,
@@ -4269,6 +4643,8 @@ def compress_context(
                             else None
                         ),
                         watermark_ceiling=_foreign_tail_ceiling,
+                        boundary=_cfg_boundary,
+                        provider_ids=_cfg_provider_plan,
                     )
                     # For the `already_present` outcome the live-dict stamping is
                     # handled by the run_agent _compress_context wrapper's
@@ -4486,7 +4862,17 @@ def compress_context(
                     agent._last_flushed_db_idx = len(compressed)
                     agent._flushed_db_message_session_id = agent.session_id
                 _session_commit_succeeded = True
-            except Exception as e:
+                if _cfg_boundary is not None:
+                    # Publish only after the authoritative DB transaction. A
+                    # failed guard/commit cannot become carry-forward evidence.
+                    agent._compression_protected_snapshot = _cfg_snapshot.to_dict()
+                    logger.info(
+                        "COMPACTION_BOUNDARY_COMMITTED boundary=%s",
+                        _cfg_boundary["compression_boundary_id"],
+                    )
+            except Exception as _commit_exc:
+                e = CompressionCommitFailure(str(_commit_exc))
+                e.__cause__ = _commit_exc
                 if (
                     not in_place
                     and locals().get("old_session_id")
@@ -4577,6 +4963,46 @@ def compress_context(
                     "labels (ignored)",
                     exc_info=True,
                 )
+
+        # Finalize provider memory only after the authoritative boundary commit.
+        # The ledger rows inserted by that same transaction are the dispatch
+        # authority; guard/commit failures never reach this block.
+        if _session_commit_succeeded and _cfg_boundary is not None:
+            _memory_manager = getattr(agent, "_memory_manager", None)
+            _finalize_boundary = getattr(
+                _memory_manager, "finalize_memory_for_boundary", None
+            )
+            if callable(_finalize_boundary):
+                _boundary_context = {
+                    key: _cfg_boundary[key]
+                    for key in (
+                        "compression_boundary_id", "source_session_id",
+                        "target_session_id", "mode", "snapshot_id",
+                        "snapshot_sha256", "protected_block_sha256",
+                        "guard_version",
+                    )
+                }
+                _boundary_context["old_session_identity"] = _boundary_parent
+                try:
+                    _boundary_context["committed_transcript_reference"] = (
+                        _committed_transcript_reference(
+                            agent._session_db,
+                            source_session_id=_cfg_source_session_id,
+                            target_session_id=_cfg_target_session_id,
+                            source_message_watermark=_commit_watermark,
+                        )
+                    )
+                    _finalize_boundary(
+                        _boundary_context, session_db=agent._session_db
+                    )
+                except Exception as _finalize_exc:
+                    # Provider/ledger reconciliation is derived state. It can
+                    # fail, but cannot downgrade an already committed boundary.
+                    logger.warning(
+                        "post-commit memory finalization failed boundary=%s class=%s",
+                        _cfg_boundary["compression_boundary_id"],
+                        type(_finalize_exc).__name__,
+                    )
 
         # Notify the context engine that a compaction boundary occurred. Plugin
         # engines (e.g. hermes-lcm) use boundary_reason="compression" to preserve

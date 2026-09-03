@@ -1,0 +1,13 @@
+2026-09-03 08:01:39,982 INFO agent.conversation_compression context compression started: session=cfg-evidence-manual-20260903T000139_ab72d056 messages=6 tokens=~100,000 model=evidence/current-candidate focus=None
+2026-09-03 08:01:41,722 INFO agent.conversation_compression FIDELITY_GUARD_PASS boundary=cb1_a87c4ca5d6730dd359e2309f5b45dc7474bcd334ed6017e7bb18d04921c10314 guard_version=compression-fidelity-guard-v0.2
+2026-09-03 08:01:41,758 INFO agent.conversation_compression COMPACTION_BOUNDARY_COMMITTED boundary=cb1_a87c4ca5d6730dd359e2309f5b45dc7474bcd334ed6017e7bb18d04921c10314
+2026-09-03 08:01:42,069 INFO gateway.run Session hygiene: 8 messages, ~72,164 tokens (estimated) — auto-compressing (threshold: 85% of 1,000,000 = 850,000 tokens)
+2026-09-03 08:01:42,071 INFO agent.conversation_compression context compression started: session=cfg-evidence-hygiene-20260903T000139_ab72d056 messages=8 tokens=~72,164 model=evidence/current-candidate focus=None
+2026-09-03 08:01:42,076 INFO agent.conversation_compression FIDELITY_GUARD_PASS boundary=cb1_cf1116f56a1ff8c82edf29de24fb832f66a8066fec04dc796b5331bcf3ee09a4 guard_version=compression-fidelity-guard-v0.2
+2026-09-03 08:01:42,097 INFO agent.conversation_compression COMPACTION_BOUNDARY_COMMITTED boundary=cb1_cf1116f56a1ff8c82edf29de24fb832f66a8066fec04dc796b5331bcf3ee09a4
+2026-09-03 08:01:42,099 INFO gateway.run Session hygiene: compressed 8 → 3 msgs, ~72,164 → ~9,514 tokens
+EVIDENCE baseline_boundaries=68 final_boundaries=70 delta=2
+EVIDENCE gateway_hygiene_threshold_triggered=True
+EVIDENCE fresh_boundary_ids=['cb1_a87c4ca5d6730dd359e2309f5b45dc7474bcd334ed6017e7bb18d04921c10314', 'cb1_cf1116f56a1ff8c82edf29de24fb832f66a8066fec04dc796b5331bcf3ee09a4']
+EVIDENCE continued_use=True no_loss=True
+EVIDENCE result=PASS

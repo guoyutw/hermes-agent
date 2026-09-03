@@ -1,0 +1,165 @@
+2026-09-03 00:51:02,849 INFO run_agent OpenAI client created (agent_init, shared=True) thread=MainThread:12104 provider= base_url=https://openrouter.ai/api/v1 model=test/model
+2026-09-03 00:51:02,876 WARNING tools.registry check_fn _a2a_tools_available returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:02,892 WARNING tools.registry check_fn check_browser_back_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:02,905 WARNING tools.registry check_fn _browser_cdp_check returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:02,919 WARNING tools.registry check_fn check_browser_click_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:02,937 WARNING tools.registry check_fn check_browser_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:02,951 WARNING tools.registry check_fn _browser_dialog_check returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:02,980 WARNING tools.registry check_fn check_browser_navigate_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:02,994 WARNING tools.registry check_fn check_browser_press_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,007 WARNING tools.registry check_fn check_browser_scroll_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,021 WARNING tools.registry check_fn check_browser_snapshot_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,034 WARNING tools.registry check_fn check_browser_type_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,047 WARNING tools.registry check_fn check_browser_vision_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,059 WARNING tools.registry check_fn check_discord_tool_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,062 WARNING tools.registry check_fn _check_feishu returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,063 WARNING tools.registry check_fn _check_feishu returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,063 WARNING tools.registry check_fn _check_ha_available returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,075 WARNING tools.registry check_fn check_image_generation_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,076 WARNING tools.registry check_fn _check_kanban_mode returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,078 WARNING tools.registry check_fn _check_kanban_orchestrator_mode returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,079 WARNING tools.registry check_fn check_react_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,088 WARNING tools.registry check_fn _check_spotify_available returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,247 INFO agent.credential_pool credential pool: no available entries (all exhausted or empty)
+2026-09-03 00:51:03,250 WARNING tools.registry check_fn check_video_generation_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,254 INFO agent.credential_pool credential pool: no available entries (all exhausted or empty)
+2026-09-03 00:51:03,257 WARNING tools.registry check_fn check_x_search_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,259 WARNING tools.registry check_fn _check_xai_video_requirements returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,277 WARNING tools.registry check_fn _check_yuanbao returned False; dependent tools will be unavailable this turn
+2026-09-03 00:51:03,325 INFO tools.tool_search tool_search activated (tier 1): 34 core/visible tools kept, 1 deferred (~183 tokens), listing full (budget ~4000 tokens)
+2026-09-03 00:51:03,332 WARNING agent.model_metadata Could not determine context length for model 'test/model' (base_url=https://openrouter.ai/api/v1) — falling back to 256,000 tokens. Set model.context_length in config.yaml to override.
+2026-09-03 00:51:03,338 INFO agent.memory_manager Memory provider 'evidence-provider' registered (0 tools)
+2026-09-03 00:51:03,339 INFO agent.conversation_compression context compression started: session=cfg-manual messages=25 tokens=~5,000 model=test/model focus=None
+2026-09-03 00:51:03,366 INFO agent.conversation_compression FIDELITY_GUARD_PASS boundary=cb1_cfe5b57bd539fd3b67add538d7503d2282d5383660dbf625ed086a5b3505b4a9 guard_version=compression-fidelity-guard-v0.2
+2026-09-03 00:51:03,370 INFO agent.conversation_compression COMPACTION_BOUNDARY_COMMITTED boundary=cb1_cfe5b57bd539fd3b67add538d7503d2282d5383660dbf625ed086a5b3505b4a9
+2026-09-03 00:51:03,488 INFO agent.conversation_compression context compression done: session=cfg-manual messages=25->2 rough_tokens=~14,394 awaiting_real_usage=true
+2026-09-03 00:51:03,488 INFO agent.conversation_compression context compression attempt telemetry: {"attempt_id":"5f0763b64cbf461faa5b9424b8dae37a","chunk_count":0,"chunking":false,"commit_ms":109,"commit_status":"committed","event":"compression_attempt","fallback_used":true,"session_id":"cfg-manual","split_status":"in_place_committed","total_duration_ms":141}
+2026-09-03 00:51:03,575 INFO run_agent OpenAI client created (agent_init, shared=True) thread=MainThread:12104 provider= base_url=https://openrouter.ai/api/v1 model=test/model
+2026-09-03 00:51:03,583 INFO agent.memory_manager Memory provider 'evidence-provider' registered (0 tools)
+2026-09-03 00:51:03,583 INFO agent.conversation_compression context compression started: session=cfg-hygiene messages=25 tokens=~5,000 model=test/model focus=None
+2026-09-03 00:51:03,592 INFO agent.conversation_compression FIDELITY_GUARD_PASS boundary=cb1_e4d57f6eaada9c7d98167055ea7326a74a0ee965ecb5c75684759cf69b454636 guard_version=compression-fidelity-guard-v0.2
+2026-09-03 00:51:03,595 INFO agent.conversation_compression COMPACTION_BOUNDARY_COMMITTED boundary=cb1_e4d57f6eaada9c7d98167055ea7326a74a0ee965ecb5c75684759cf69b454636
+2026-09-03 00:51:03,597 INFO agent.conversation_compression context compression done: session=cfg-hygiene messages=25->2 rough_tokens=~14,395 awaiting_real_usage=true
+2026-09-03 00:51:03,598 INFO agent.conversation_compression context compression attempt telemetry: {"attempt_id":"2eaebb61f22048fcaa53a51ebb2a0704","chunk_count":0,"chunking":false,"commit_ms":0,"commit_status":"committed","event":"compression_attempt","fallback_used":true,"session_id":"cfg-hygiene","split_status":"in_place_committed","total_duration_ms":14}
+🗜️ Compacting context — summarizing earlier conversation so I can continue...
+<MagicMock name='mock.get_automatic_compaction_status_message()' id='2066440596496'>
+{
+  "schema_version": 27,
+  "foreign_key_check": [],
+  "cases": [
+    {
+      "label": "manual",
+      "trigger": "manual_force_true",
+      "session_id": "cfg-manual",
+      "pre_input_count": 25,
+      "pre_db_count": 25,
+      "post_output_count": 2,
+      "post_db_count": 2,
+      "latest_turn_preserved": true,
+      "boundary": {
+        "compression_boundary_id": "cb1_cfe5b57bd539fd3b67add538d7503d2282d5383660dbf625ed086a5b3505b4a9",
+        "source_session_id": "cfg-manual",
+        "target_session_id": "cfg-manual",
+        "mode": "IN_PLACE",
+        "boundary_seq": 1,
+        "snapshot_id": "ps1_e899d1301930ff225ba704c453f951e17899cb337286a51e06880276de3fa708",
+        "snapshot_sha256": "e899d1301930ff225ba704c453f951e17899cb337286a51e06880276de3fa708",
+        "protected_block_sha256": "985294a29b3e6fe855b4fa6df52178700dc00526164e01d051fd9415eb789ff3",
+        "guard_version": "compression-fidelity-guard-v0.2",
+        "created_at": "2026-09-03T00:51:03.366663+08:00",
+        "committed_at": "1788367863.366663",
+        "record_integrity_sha256": null
+      },
+      "ledger": [
+        {
+          "compression_boundary_id": "cb1_cfe5b57bd539fd3b67add538d7503d2282d5383660dbf625ed086a5b3505b4a9",
+          "provider_id": "evidence-provider",
+          "status": "COMPLETE",
+          "attempt_count": 1,
+          "last_error_class": null,
+          "updated_at": "1788367863.372663"
+        }
+      ],
+      "provider_finalizations": [
+        {
+          "boundary": "cb1_cfe5b57bd539fd3b67add538d7503d2282d5383660dbf625ed086a5b3505b4a9",
+          "idempotency_key": "cb1_cfe5b57bd539fd3b67add538d7503d2282d5383660dbf625ed086a5b3505b4a9"
+        }
+      ],
+      "ledger_transition_trace": [
+        {
+          "before_claim": "NOT_STARTED"
+        },
+        {
+          "after_claim": "PENDING"
+        },
+        {
+          "after_complete": "COMPLETE"
+        }
+      ],
+      "continued_use_messages": [
+        "CONTINUED-manual-USER",
+        "CONTINUED-manual-ASSISTANT"
+      ],
+      "continued_db_count": 4,
+      "system_prompt": "SYSTEM"
+    },
+    {
+      "label": "hygiene",
+      "trigger": "automatic_hygiene_force_false",
+      "session_id": "cfg-hygiene",
+      "pre_input_count": 25,
+      "pre_db_count": 25,
+      "post_output_count": 2,
+      "post_db_count": 2,
+      "latest_turn_preserved": true,
+      "boundary": {
+        "compression_boundary_id": "cb1_e4d57f6eaada9c7d98167055ea7326a74a0ee965ecb5c75684759cf69b454636",
+        "source_session_id": "cfg-hygiene",
+        "target_session_id": "cfg-hygiene",
+        "mode": "IN_PLACE",
+        "boundary_seq": 1,
+        "snapshot_id": "ps1_e899d1301930ff225ba704c453f951e17899cb337286a51e06880276de3fa708",
+        "snapshot_sha256": "e899d1301930ff225ba704c453f951e17899cb337286a51e06880276de3fa708",
+        "protected_block_sha256": "985294a29b3e6fe855b4fa6df52178700dc00526164e01d051fd9415eb789ff3",
+        "guard_version": "compression-fidelity-guard-v0.2",
+        "created_at": "2026-09-03T00:51:03.592265+08:00",
+        "committed_at": "1788367863.5922651",
+        "record_integrity_sha256": null
+      },
+      "ledger": [
+        {
+          "compression_boundary_id": "cb1_e4d57f6eaada9c7d98167055ea7326a74a0ee965ecb5c75684759cf69b454636",
+          "provider_id": "evidence-provider",
+          "status": "COMPLETE",
+          "attempt_count": 1,
+          "last_error_class": null,
+          "updated_at": "1788367863.5967696"
+        }
+      ],
+      "provider_finalizations": [
+        {
+          "boundary": "cb1_e4d57f6eaada9c7d98167055ea7326a74a0ee965ecb5c75684759cf69b454636",
+          "idempotency_key": "cb1_e4d57f6eaada9c7d98167055ea7326a74a0ee965ecb5c75684759cf69b454636"
+        }
+      ],
+      "ledger_transition_trace": [
+        {
+          "before_claim": "NOT_STARTED"
+        },
+        {
+          "after_claim": "PENDING"
+        },
+        {
+          "after_complete": "COMPLETE"
+        }
+      ],
+      "continued_use_messages": [
+        "CONTINUED-hygiene-USER",
+        "CONTINUED-hygiene-ASSISTANT"
+      ],
+      "continued_db_count": 4,
+      "system_prompt": "SYSTEM"
+    }
+  ]
+}
