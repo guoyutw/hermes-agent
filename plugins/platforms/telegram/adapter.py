@@ -6491,6 +6491,47 @@ class TelegramAdapter(TelegramHeldInboundMixin, TelegramTopicRoutingMixin, BaseP
         if not self._is_user_authorized_from_message(msg):
             self._log_blocked_user(msg)
             return
+
+        approval_candidate = False
+        approval_reason = "classifier_not_run"
+        try:
+            from .openchatx_approval import (
+                classify_openchatx_text_approval_candidate,
+                forward_openchatx_text_approval,
+            )
+            approval_candidate, approval_reason = classify_openchatx_text_approval_candidate(msg)
+        except Exception as exc:
+            approval_reason = f"helper_error:{type(exc).__name__}"
+
+        reply = getattr(msg, "reply_to_message", None)
+
+        if approval_candidate:
+            self._accept_update()
+            try:
+                result = await forward_openchatx_text_approval(msg)
+                if not result.get("accepted"):
+                    raise RuntimeError("OpenChatX did not accept the approval reply.")
+                await msg.reply_text("✅ 已核准" if msg.text == "核准" else "❌ 已取消")
+            except Exception as exc:
+                logger.warning(
+                    "[%s] OpenChatX text approval failed: %s",
+                    self.name, _redact_telegram_error_text(exc),
+                )
+                with contextlib.suppress(Exception):
+                    await msg.reply_text("⚠️ 核准失敗、已失效或已處理；沒有放行新的刪除。")
+            return
+
+        if (
+            msg.text in {"核准", "取消"}
+            and reply is not None
+            and str(getattr(msg, "chat_id", "") or "") == "1131331885"
+            and str(getattr(msg, "message_thread_id", "") or "") == "97203"
+        ):
+            self._accept_update()
+            with contextlib.suppress(Exception):
+                await msg.reply_text(f"⚠️ 核准未送出（{approval_reason}）；沒有放行新的刪除。")
+            return
+
         if not self._gate_or_observe(msg, update, MessageType.TEXT):
             return
         await self._ensure_forum_commands(update.message)
